@@ -13,7 +13,11 @@ Stages (run as separate invocations):
 
 Prerequisites (one-time):
     pip install earthengine-api
-    earthengine authenticate    # opens a browser, then paste code back
+    earthengine authenticate --project=<your-ee-project-id>
+        (register a free project at https://code.earthengine.google.com;
+         pick "non-commercial / research"; you'll get an ID like ee-yourhandle)
+
+Then every invocation needs --project=<id> OR `export EE_PROJECT=<id>` set.
 
 Optional stages:
   --stages aef,radd,gladl,hansen        (single-modality path: ~70 tasks, ~6 GB)
@@ -63,12 +67,26 @@ S2S1_YEARS = [2020, 2021, 2022, 2023, 2024, 2025]
 
 # ─── GEE authentication + geometry ──────────────────────────────────────────
 
-def init_ee():
+def init_ee(project: str | None = None):
+    """Initialize the Earth Engine client. Modern GEE requires a cloud project ID.
+
+    Pass via --project on the CLI, or set the EE_PROJECT environment variable,
+    e.g. `export EE_PROJECT=ee-yourhandle`. Register a free project at
+    https://code.earthengine.google.com (non-commercial / research tier).
+    """
+    import os
     import ee
+    project = project or os.environ.get("EE_PROJECT")
     try:
-        ee.Initialize()
+        if project:
+            ee.Initialize(project=project)
+        else:
+            ee.Initialize()
     except Exception:
-        print("earthengine not initialized — run `earthengine authenticate` first.",
+        print("earthengine not initialized. First run:\n"
+              "    pip install earthengine-api\n"
+              "    earthengine authenticate --project=<your-ee-project-id>\n"
+              "then re-run this script with --project=<your-ee-project-id>",
               file=sys.stderr)
         raise
     return ee
@@ -319,8 +337,8 @@ def submit_s1_month(ee, tile, year, month):
 
 # ─── Driver ─────────────────────────────────────────────────────────────────
 
-def submit_all(tiles, stages: set[str]):
-    ee = init_ee()
+def submit_all(tiles, stages: set[str], project: str | None = None):
+    ee = init_ee(project)
     task_log = []
 
     for tile in tiles:
@@ -391,8 +409,8 @@ def submit_all(tiles, stages: set[str]):
     print("Run with --monitor to poll progress.")
 
 
-def monitor():
-    ee = init_ee()
+def monitor(project: str | None = None):
+    ee = init_ee(project)
     log_path = Path("data/derived/africa_export_tasks.json")
     if not log_path.exists():
         print(f"No task log at {log_path}. Submit first.")
@@ -479,14 +497,17 @@ if __name__ == "__main__":
     ap.add_argument("--tiles", type=str, default="scripts/africa_tiles.json")
     ap.add_argument("--stages", type=str, default="aef,radd,gladl,hansen",
                     help="Comma-separated subset of {aef,radd,gladl,hansen,s1,s2}.")
+    ap.add_argument("--project", type=str, default=None,
+                    help="GEE cloud project ID (e.g. ee-yourhandle). "
+                         "Can also be set via the EE_PROJECT env var.")
     args = ap.parse_args()
 
     if args.submit:
         tiles = json.loads(Path(args.tiles).read_text())["tiles"]
         stages = set(s.strip() for s in args.stages.split(",") if s.strip())
-        submit_all(tiles, stages)
+        submit_all(tiles, stages, project=args.project)
     elif args.monitor:
-        monitor()
+        monitor(project=args.project)
     elif args.restructure:
         if not args.drive_local:
             print("--restructure requires --drive-local /path/to/downloaded/folder")
