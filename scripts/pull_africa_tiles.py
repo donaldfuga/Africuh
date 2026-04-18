@@ -80,6 +80,14 @@ def tile_region(ee, lon: float, lat: float, km: float = 10.0):
     return pt.buffer(km * 500).bounds()   # half-extent = km * 500 m
 
 
+def utm_epsg(lon: float, lat: float) -> str:
+    """Local UTM EPSG for (lon, lat). Challenge S1/S2 are delivered in local UTM
+    (challenge.ipynb, sections 4.1 and 4.2) — NOT EPSG:4326. AEF stays 4326."""
+    zone = int((lon + 180) // 6) + 1
+    epsg = 32600 + zone if lat >= 0 else 32700 + zone
+    return f"EPSG:{epsg}"
+
+
 # ─── AEF ─────────────────────────────────────────────────────────────────────
 
 def submit_aef(ee, tile, year):
@@ -256,7 +264,7 @@ def submit_s2_month(ee, tile, year, month):
         fileNamePrefix=f"{tile['tile_id']}__s2_l2a_{year}_{month}",  # NO zero-pad
         region=region,
         scale=10,
-        crs="EPSG:4326",
+        crs=utm_epsg(tile["lon"], tile["lat"]),   # local UTM, per challenge.ipynb §4.1
         maxPixels=int(1e10),
         fileFormat="GeoTIFF",
     )
@@ -301,7 +309,7 @@ def submit_s1_month(ee, tile, year, month):
         fileNamePrefix=f"{tile['tile_id']}__s1_rtc_{year}_{month}_ascending",
         region=region,
         scale=10,
-        crs="EPSG:4326",
+        crs=utm_epsg(tile["lon"], tile["lat"]),   # local UTM, per challenge.ipynb §4.2
         maxPixels=int(1e10),
         fileFormat="GeoTIFF",
     )

@@ -21,6 +21,19 @@ AEF_TRAIN = DATA_ROOT / "aef-embeddings" / "train"
 LABELS = DATA_ROOT / "labels" / "train"
 
 
+def _is_utm(crs) -> bool:
+    """True for any UTM EPSG (326xx north, 327xx south). S1/S2 must be UTM
+    per challenge.ipynb §4.1/4.2 — AEF is 4326."""
+    s = str(crs).upper()
+    if not s.startswith("EPSG:"):
+        return False
+    try:
+        code = int(s.split(":", 1)[1])
+    except ValueError:
+        return False
+    return (32601 <= code <= 32660) or (32701 <= code <= 32760)
+
+
 def _check(label: str, ok: bool, detail: str = "") -> bool:
     mark = "PASS" if ok else "FAIL"
     print(f"  [{mark}] {label}{'  — ' + detail if detail else ''}")
@@ -128,10 +141,10 @@ def validate_tile(tile_id: str) -> bool:
                 with rasterio.open(sf) as src:
                     ok_bands = src.count == 12
                     ok_dtype = src.dtypes[0] in ("uint16",)
-                    ok_crs = str(src.crs).upper().endswith("4326")
+                    ok_crs = _is_utm(src.crs)
                     arr = src.read(1)
                     ok_content = int((arr > 0).sum()) > 0
-                    all_ok &= _check(f"S2 {sf.name}: 12 bands uint16 EPSG:4326 non-empty",
+                    all_ok &= _check(f"S2 {sf.name}: 12 bands uint16 local-UTM non-empty",
                                      ok_bands and ok_dtype and ok_crs and ok_content,
                                      f"bands={src.count} dtype={src.dtypes[0]} "
                                      f"crs={src.crs} nz={int((arr > 0).sum()):,}")
@@ -151,7 +164,7 @@ def validate_tile(tile_id: str) -> bool:
                 with rasterio.open(sf) as src:
                     ok_bands = src.count == 1
                     ok_dtype = np.issubdtype(np.dtype(src.dtypes[0]), np.floating)
-                    ok_crs = str(src.crs).upper().endswith("4326")
+                    ok_crs = _is_utm(src.crs)
                     arr = src.read(1)
                     valid = arr[np.isfinite(arr) & (arr > 0)]
                     # Linear power sanity: mean backscatter well under 2.0
@@ -162,7 +175,7 @@ def validate_tile(tile_id: str) -> bool:
                     else:
                         mean_v = float("nan")
                         ok_linear = False
-                    all_ok &= _check(f"S1 {sf.name}: 1-band float EPSG:4326 linear power",
+                    all_ok &= _check(f"S1 {sf.name}: 1-band float local-UTM linear power",
                                      ok_bands and ok_dtype and ok_crs and ok_linear,
                                      f"bands={src.count} dtype={src.dtypes[0]} "
                                      f"crs={src.crs} mean={mean_v:.4f}")
